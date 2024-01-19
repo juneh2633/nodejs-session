@@ -6,9 +6,10 @@ const queryCheck = require("../modules/queryCheck");
 const pwHash = require("../modules/pwHash");
 const pwCompare = require("../modules/pwComapre");
 const jwt = require("jsonwebtoken");
-const tokenElement = require("../modules/tokenElement");
-const signAccessToken = require("../modules/signAccessToken");
-const signRefreshToken = require("../modules/signRefreshToken");
+
+// const signAccessToken = require("../modules/signAccessToken");
+// const signRefreshToken = require("../modules/signRefreshToken");
+const redisClient = require("../modules/redisClient");
 
 /////////-----account---------///////////
 //  POST/login           => 로그인
@@ -22,7 +23,6 @@ const signRefreshToken = require("../modules/signRefreshToken");
 /////////////////////////////////////////
 
 //  POST/login           => 로그인
-
 router.post("/login", logoutAuth, async (req, res, next) => {
     const { id, password } = req.query;
     const exception = {
@@ -32,7 +32,6 @@ router.post("/login", logoutAuth, async (req, res, next) => {
     const result = {
         data: null,
     };
-
     try {
         queryCheck({ id, password });
         const sql = "SELECT * FROM account WHERE id = $1  AND account_deleted = false";
@@ -48,8 +47,10 @@ router.post("/login", logoutAuth, async (req, res, next) => {
 
         const idx = queryResult.rows[0].idx;
 
-        session.idx = queryResult.rows[0].idx;
-        session.admin = queryResult.rows[0].is_admin ? true : false;
+        req.session.idx = queryResult.rows[0].idx;
+        req.session.admin = queryResult.rows[0].is_admin ? true : false;
+
+        await redisClient.set(String(idx), req.session.id);
         next(result);
 
         res.status(200).send(result);
@@ -66,6 +67,7 @@ router.get("/logout", loginAuth, async (req, res, next) => {
 
     try {
         next(result);
+        await redisClient.del(String(req.session.idx));
         req.session.destroy();
 
         res.status(200).send(result);
@@ -134,7 +136,7 @@ router.get("/find/password", logoutAuth, async (req, res, next) => {
 
 //  GET/                =>회원정보 열람
 router.get("/", loginAuth, async (req, res, next) => {
-    const idx = tokenElement(req.cookies.accessToken).idx;
+    const idx = req.session.idx;
     console.log(idx);
     const result = {
         data: null,
@@ -196,7 +198,7 @@ router.post("/", logoutAuth, async (req, res, next) => {
 
 //  PUT/                =>회원정보 수정
 router.put("/", loginAuth, async (req, res, next) => {
-    const idx = tokenElement(req.cookies.accessToken).idx;
+    const idx = req.session.idx;
     const { password, passwordCheck, name, phonenumber } = req.query;
     const result = {
         data: null,
@@ -215,7 +217,7 @@ router.put("/", loginAuth, async (req, res, next) => {
 
 //  DELETE/             =>회원탈퇴
 router.delete("/", loginAuth, async (req, res, next) => {
-    const idx = tokenElement(req.cookies.accessToken).idx;
+    const idx = req.session.idx;
     const result = {
         data: null,
     };

@@ -1,8 +1,9 @@
 // session login
-
+require("dotenv").config();
 //-----------------Import--------------------------------------------//
 const express = require("express");
 const session = require("express-session");
+
 const cookieParser = require("cookie-parser");
 const url = require("url");
 const https = require("https");
@@ -17,16 +18,24 @@ const testAPI = require("./src/routers/test");
 const logger = require("./src/middleware/logger");
 
 //-----------------config----------------------------------//
-require("dotenv").config();
+
 const { HTTP_PORT, HTTPS_PORT } = require("./src/config/portConfig");
 const httpConfig = require("./src/config/httpsConfig");
 const sessionConfig = require("./src/config/sessionConfig");
 
+//const RedisStore = require("connect-redis").default;
+const redis = require("redis");
+let redisClient = redis.createClient();
+// redisClient.connect().catch((err) => {
+//     console.error("Redis connect Error:", err.stack);
+// });
+
+// let redisStore = new RedisStore({ client: redisClient });
+// sessionConfig.store = redisStore;
 //----------------middleWare------------------------------------------//
-app.use(cookieParser());
+https: app.use(cookieParser());
 app.use(session(sessionConfig));
 app.use(express.json());
-
 // app.get("*", (req, res, next) => {
 //     const protocol = req.protocol;
 //     if (protocol === "http") {

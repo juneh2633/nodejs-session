@@ -5,9 +5,12 @@ const signAccessToken = require("../modules/signAccessToken");
 
 module.exports = (req, res, next) => {
     if (!req.session.admin) {
-        const error = new Error("dont have admin permission");
-        error.status = 401;
-        next(error);
+        const exception = {
+            message: "dont have admin permission",
+            status: 401,
+        };
+
+        next(exception);
     } else {
         next();
     }
