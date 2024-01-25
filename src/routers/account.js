@@ -17,6 +17,7 @@ const recordDailyVisited = require("../modules/recordDailyVisited");
 //  POST/               =>회원가입
 //  PUT/                =>회원정보 수정
 //  DELETE/             =>회원탈퇴
+//  GET/visited         =>접속자수 열람
 /////////////////////////////////////////
 
 //  POST/login           => 로그인

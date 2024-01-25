@@ -17,6 +17,7 @@ router.get("/", async (req, res, next) => {
     const t = await redisClient.get(today);
     console.log(i);
     console.log(t);
+    console.log(req.query.title);
     res.status(200).send();
 });
 module.exports = router;

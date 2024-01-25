@@ -35,7 +35,24 @@ router.get("/all", loginAuth, async (req, res, next) => {
         next(err);
     }
 });
+//  GET/search            =>게시글 검색
+router.get("/search", loginAuth, async (req, res, next) => {
+    const { title } = req.query;
+    const result = {
+        data: null,
+    };
+    try {
+        //queryCheck({ title });
+        const queryTitle = `%${title}%`;
 
+        const sql = "SELECT * FROM board WHERE title like $1 AND board_deleted = false ORDER BY board.board_uid";
+        const queryResult = await pgPool.query(sql, [queryTitle]);
+        result.data = queryResult.rows;
+        res.status(200).send(result);
+    } catch (err) {
+        next(err);
+    }
+});
 //  GET/:uid            =>게시글 가져오기
 router.get("/:uid", loginAuth, async (req, res, next) => {
     const { uid } = req.params;
