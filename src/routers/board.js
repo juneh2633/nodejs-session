@@ -2,6 +2,8 @@ const router = require("express").Router();
 const pgPool = require("../modules/pgPool");
 const loginAuth = require("../middleware/loginAuth");
 const queryCheck = require("../modules/queryCheck");
+const redisClient = require("../modules/redisClient");
+const saveHistory = require("../modules/saveHistory");
 
 /////////-----board---------///////////
 //  GET/all?page        =>게시글 목록 가져오기(pagenation)
@@ -38,21 +40,42 @@ router.get("/all", loginAuth, async (req, res, next) => {
 //  GET/search            =>게시글 검색
 router.get("/search", loginAuth, async (req, res, next) => {
     const { title } = req.query;
+    const idx = req.session.idx;
     const result = {
         data: null,
     };
     try {
-        //queryCheck({ title });
+        queryCheck({ title });
         const queryTitle = `%${title}%`;
 
         const sql = "SELECT * FROM board WHERE title like $1 AND board_deleted = false ORDER BY board.board_uid";
         const queryResult = await pgPool.query(sql, [queryTitle]);
+
+        next(result);
         result.data = queryResult.rows;
+        saveHistory(idx, title);
         res.status(200).send(result);
     } catch (err) {
         next(err);
     }
 });
+router.get("/history", loginAuth, async (req, res, next) => {
+    const result = {
+        data: null,
+    };
+    const idx = req.session.idx;
+    const key = `history${idx}`;
+    try {
+        const history = await redisClient.zRange(key, 0, 4, { withScores: true });
+
+        result.data = history;
+        next(result);
+        res.status(200).send(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
 //  GET/:uid            =>게시글 가져오기
 router.get("/:uid", loginAuth, async (req, res, next) => {
     const { uid } = req.params;
