@@ -5,10 +5,7 @@ const logoutAuth = require("../middleware/logoutAuth");
 const queryCheck = require("../modules/queryCheck");
 const pwHash = require("../modules/pwHash");
 const pwCompare = require("../modules/pwComapre");
-const jwt = require("jsonwebtoken");
 
-// const signAccessToken = require("../modules/signAccessToken");
-// const signRefreshToken = require("../modules/signRefreshToken");
 const redisClient = require("../modules/redisClient");
 
 /////////-----account---------///////////
@@ -46,10 +43,9 @@ router.post("/login", logoutAuth, async (req, res, next) => {
         }
 
         const idx = queryResult.rows[0].idx;
-
-        req.session.idx = queryResult.rows[0].idx;
-        req.session.admin = queryResult.rows[0].is_admin ? true : false;
-
+        req.session.idx = idx;
+        const adminPermission = queryResult.rows[0].is_admin ? "true" : "false";
+        await redisClient.set(`admin${idx}`, adminPermission);
         await redisClient.set(String(idx), req.session.id);
         next(result);
 
@@ -64,10 +60,11 @@ router.get("/logout", loginAuth, async (req, res, next) => {
     const result = {
         data: null,
     };
-
+    const idx = req.session.idx;
     try {
         next(result);
-        await redisClient.del(String(req.session.idx));
+        await redisClient.del(String(idx));
+        await redisClient.del(`admin${idx}`);
         req.session.destroy();
 
         res.status(200).send(result);

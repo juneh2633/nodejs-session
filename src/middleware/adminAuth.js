@@ -1,17 +1,23 @@
-const jwt = require("jsonwebtoken");
-const tokenElement = require("../modules/tokenElement");
-const verifyToken = require("../modules/verifyToken");
-const signAccessToken = require("../modules/signAccessToken");
+const redisClient = require("../modules/redisClient");
 
-module.exports = (req, res, next) => {
-    if (!req.session.admin) {
-        const exception = {
-            message: "dont have admin permission",
-            status: 401,
-        };
+module.exports = async (req, res, next) => {
+    const idx = req.session.idx;
+    const exception = {
+        message: "dont have admin permission",
+        status: 401,
+    };
 
-        next(exception);
-    } else {
+    try {
+        if (!idx) {
+            throw exception;
+        }
+        const permission = await redisClient.get(`admin${idx}`);
+        if (!permission || permission !== "true") {
+            throw exception;
+        }
         next();
+    } catch (err) {
+        console.err;
+        next(err);
     }
 };
