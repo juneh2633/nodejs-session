@@ -10,7 +10,7 @@ module.exports = async (req, res, next) => {
             };
         }
         const sid = await redisClient.get(String(idx));
-        if (!sid || sid != req.session.id) {
+        if (!sid || sid !== req.session.id) {
             req.session.destroy();
             throw {
                 message: "logged in another environment",

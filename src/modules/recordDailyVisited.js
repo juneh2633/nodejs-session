@@ -1,0 +1,19 @@
+const redisClient = require("../modules/redisClient");
+const getExpireTime = require("../modules/getExpireTime");
+
+module.exports = async (idx) => {
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    try {
+        const visted = await redisClient.get(`visited${idx}`);
+        if (visted) {
+            return;
+        }
+        const now = new Date();
+        await redisClient.set(`visited${idx}`, now.toISOString());
+        await redisClient.expire(`visited${idx}`, getExpireTime());
+        await redisClient.incr(today);
+        await redisClient.expire(today, 86401);
+    } catch (err) {
+        throw err;
+    }
+};

@@ -7,12 +7,14 @@ const session = require("express-session");
 const cookieParser = require("cookie-parser");
 const https = require("https");
 const app = express();
+const schedule = require("node-schedule");
+const recordTotalVisited = require("./src/modules/recordTotalVisited");
 
 const accountAPI = require("./src/routers/account");
 const boardAPI = require("./src/routers/board");
 const replyAPI = require("./src/routers/reply");
 const logAPI = require("./src/routers/log");
-//const testAPI = require("./src/routers/test");
+const testAPI = require("./src/routers/test");
 const logger = require("./src/middleware/logger");
 
 //-----------------config----------------------------------//
@@ -40,10 +42,12 @@ app.use("/account", accountAPI);
 app.use("/board", boardAPI);
 app.use("/reply", replyAPI);
 app.use("/log", logAPI);
-// app.use("/test", testAPI);
+app.use("/test", testAPI);
 
 //----------------------------logger---------------------------------//
 app.use(logger);
+//--------------------------schedule----------------------------//
+schedule.scheduleJob("59 59 23 * * *", recordTotalVisited);
 
 //----------------------------error_handler---------------------------------//
 app.use((err, req, res, next) => {

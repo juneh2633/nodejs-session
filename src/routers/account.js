@@ -7,7 +7,7 @@ const pwHash = require("../modules/pwHash");
 const pwCompare = require("../modules/pwComapre");
 
 const redisClient = require("../modules/redisClient");
-
+const recordDailyVisted = require("../modules/recordDailyVisited");
 /////////-----account---------///////////
 //  POST/login           => 로그인
 //  GET/logout          =>로그아웃
@@ -47,6 +47,7 @@ router.post("/login", logoutAuth, async (req, res, next) => {
         const adminPermission = queryResult.rows[0].is_admin ? "true" : "false";
         await redisClient.set(`admin${idx}`, adminPermission);
         await redisClient.set(String(idx), req.session.id);
+        recordDailyVisted(idx);
         next(result);
 
         res.status(200).send(result);
