@@ -34,15 +34,16 @@ router.post("/login", logoutAuth, async (req, res, next) => {
         queryCheck({ id, password });
         const sql = "SELECT * FROM account WHERE id = $1  AND account_deleted = false";
         const queryResult = await pgPool.query(sql, [id]);
-
-        if (!queryResult.rows) {
+        console.log("@@@");
+        if (!queryResult.rows[0]) {
             throw exception;
         }
+        console.log(queryResult.rows[0].password);
         const match = await pwCompare(password, queryResult.rows[0].password);
+        console.log("@@@");
         if (!match) {
             throw exception;
         }
-
         const idx = queryResult.rows[0].idx;
         req.session.idx = idx;
         const adminPermission = queryResult.rows[0].is_admin ? "true" : "false";

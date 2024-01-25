@@ -25,7 +25,7 @@ const patternSelect = (str) => {
 
 module.exports = (query) => {
     const list = Object.entries(query);
-    console.log(list);
+
     const error = new Error();
     error.status = 400;
     console.log(list);
