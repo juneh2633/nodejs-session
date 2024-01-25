@@ -47,7 +47,9 @@ app.use("/test", testAPI);
 //----------------------------logger---------------------------------//
 app.use(logger);
 //--------------------------schedule----------------------------//
-schedule.scheduleJob("59 59 23 * * *", recordTotalVisited);
+//schedule.scheduleJob("59 59 23 * * *", recordTotalVisited);
+//매일 23시 59분 59초 토탈에 저장
+// 굳이????
 
 //----------------------------error_handler---------------------------------//
 app.use((err, req, res, next) => {
