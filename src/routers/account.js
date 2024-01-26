@@ -181,7 +181,7 @@ router.post("/", logoutAuth, async (req, res, next) => {
         const doubleCheckSql = "SELECT * FROM account WHERE id = $1";
         const doubleCheckQueryResult = await pgPool.query(doubleCheckSql, [id]);
 
-        if (doubleCheckQueryResult.rows) {
+        if (doubleCheckQueryResult.rows[0]) {
             throw exception;
         }
 

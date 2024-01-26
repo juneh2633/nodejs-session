@@ -3,7 +3,7 @@ const pgPool = require("../modules/pgPool");
 const loginAuth = require("../middleware/loginAuth");
 const queryCheck = require("../modules/queryCheck");
 const redisClient = require("../modules/redisClient");
-const saveHistory = require("../modules/saveHistory");
+const saveSearchHistory = require("../modules/saveSearchHistory");
 
 /////////-----board---------///////////
 //  GET/all?page        =>게시글 목록 가져오기(pagenation)
@@ -53,13 +53,13 @@ router.get("/search", loginAuth, async (req, res, next) => {
 
         next(result);
         result.data = queryResult.rows;
-        saveHistory(idx, title);
+        saveSearchHistory(idx, title);
         res.status(200).send(result);
     } catch (err) {
         next(err);
     }
 });
-//  GET/search            =>게시글 검색
+//  GET/history            => 최근 검색어
 router.get("/history", loginAuth, async (req, res, next) => {
     const result = {
         data: null,
@@ -69,7 +69,7 @@ router.get("/history", loginAuth, async (req, res, next) => {
     try {
         const history = await redisClient.zRange(key, 0, 4, { withScores: true });
 
-        result.data = history;
+        result.data = history.reverse();
         next(result);
         res.status(200).send(result);
     } catch (err) {

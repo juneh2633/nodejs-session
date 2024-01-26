@@ -2,7 +2,7 @@ const redisClient = require("../modules/redisClient");
 
 module.exports = async (idx, word) => {
     const key = `history${idx}`;
-    const score = Number(new Date().getTime());
+    const score = Number(new Date());
     const limit = 5;
     try {
         await redisClient.zAdd(key, { score: score, value: word }); // 새 검색어 추가
