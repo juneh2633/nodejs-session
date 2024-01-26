@@ -1,4 +1,5 @@
 const router = require("express").Router();
+const getExpireTime = require("../modules/getExpireTime");
 const redisClient = require("../modules/redisClient");
 
 router.get("/", async (req, res, next) => {
@@ -17,7 +18,16 @@ router.get("/", async (req, res, next) => {
     const t = await redisClient.get(today);
     console.log(i);
     console.log(t);
+    console.log("getExpireTime", getExpireTime());
     console.log(req.query.title);
     res.status(200).send();
+});
+
+router.get("/idx", async (req, res, next) => {
+    const result = {
+        idx: req.session.idx,
+    };
+    console.log(result.idx);
+    res.status(200).send(result);
 });
 module.exports = router;

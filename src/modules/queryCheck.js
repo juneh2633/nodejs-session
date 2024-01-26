@@ -32,12 +32,12 @@ module.exports = (query) => {
     for (let idx = 0; idx < list.length; idx++) {
         if (!list[idx][1] || list[idx][1] === undefined) {
             error.message = `error occurs at ${list[idx][0]} , ${list[idx][0]} = [${list[idx][1]}]`;
-            console.log(list[idx][0], list[idx][1]);
+
             throw error;
         }
         if (!patternSelect(list[idx][0]).test(list[idx][1])) {
             error.message = `regex fault at ${list[idx][0]}`;
-            console.log(list[idx][1]);
+
             throw error;
         } //pattern.test(id)
         if (list[idx][0] === "passwordCheck" && list[idx - 1][1] !== list[idx][1]) {

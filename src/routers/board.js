@@ -26,7 +26,7 @@ router.get("/all", loginAuth, async (req, res, next) => {
                      JOIN account ON
                      board.idx = account.idx
                      WHERE board.board_deleted = false
-                     ORDER BY board.board_uid
+                     ORDER BY board.board_uid DESC
                      LIMIT $1 OFFSET $2;`;
         const queryResult = await pgPool.query(sql, [pageSizeOption, (parseInt(page) - 1) * pageSizeOption]);
 
@@ -48,7 +48,7 @@ router.get("/search", loginAuth, async (req, res, next) => {
         queryCheck({ title });
         const queryTitle = `%${title}%`;
 
-        const sql = "SELECT * FROM board WHERE title like $1 AND board_deleted = false ORDER BY board.board_uid";
+        const sql = "SELECT * FROM board WHERE title like $1 AND board_deleted = false ORDER BY board.board_uid DESC";
         const queryResult = await pgPool.query(sql, [queryTitle]);
 
         next(result);
@@ -59,6 +59,7 @@ router.get("/search", loginAuth, async (req, res, next) => {
         next(err);
     }
 });
+//  GET/search            =>게시글 검색
 router.get("/history", loginAuth, async (req, res, next) => {
     const result = {
         data: null,

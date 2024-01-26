@@ -13,9 +13,10 @@ module.exports = async (idx) => {
         await redisClient.set(`visited${idx}`, now.toISOString());
         await redisClient.expire(`visited${idx}`, getExpireTime());
         await redisClient.incr(today);
+        console.log(`${today} ++`);
         console.log(await redisClient.get(today));
         await redisClient.expire(today, 86401);
-        await redisClient.incr(total);
+        await redisClient.incr("total");
     } catch (err) {
         throw err;
     }

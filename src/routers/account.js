@@ -34,25 +34,24 @@ router.post("/login", logoutAuth, async (req, res, next) => {
         queryCheck({ id, password });
         const sql = "SELECT * FROM account WHERE id = $1  AND account_deleted = false";
         const queryResult = await pgPool.query(sql, [id]);
-        console.log("@@@");
         if (!queryResult.rows[0]) {
             throw exception;
         }
-        console.log(queryResult.rows[0].password);
+
         const match = await pwCompare(password, queryResult.rows[0].password);
-        console.log("@@@");
         if (!match) {
             throw exception;
         }
         const idx = queryResult.rows[0].idx;
         req.session.idx = idx;
+
         const adminPermission = queryResult.rows[0].is_admin ? "true" : "false";
         await redisClient.set(`admin${idx}`, adminPermission);
         await redisClient.set(String(idx), req.session.id);
         recordDailyVisited(idx);
         next(result);
 
-        res.status(200).send(result);
+        res.status(200).send();
     } catch (err) {
         next(err);
     }
@@ -70,7 +69,7 @@ router.get("/logout", loginAuth, async (req, res, next) => {
         await redisClient.del(`admin${idx}`);
         req.session.destroy();
 
-        res.status(200).send(result);
+        res.status(200).send();
     } catch (err) {
         next(err);
     }
@@ -235,11 +234,13 @@ router.delete("/", loginAuth, async (req, res, next) => {
 
 router.get("/visited", loginAuth, async (req, res, next) => {
     const result = {
+        todayString: null,
         today: null,
         total: null,
     };
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     try {
+        result.todayString = today;
         result.today = await redisClient.get(today);
         result.total = await redisClient.get("total");
         next(result);
