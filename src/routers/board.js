@@ -4,7 +4,8 @@ const loginAuth = require("../middleware/loginAuth");
 const queryCheck = require("../modules/queryCheck");
 const redisClient = require("../modules/redisClient");
 const saveSearchHistory = require("../modules/saveSearchHistory");
-
+const uploadImg = require("../middleware/uploadImg");
+const uploadToS3 = require("../modules/uploadToS3");
 /////////-----board---------///////////
 //  GET/all?page        =>게시글 목록 가져오기(pagenation)
 //  GET/:uid            =>게시글 가져오기
@@ -59,8 +60,8 @@ router.get("/search", loginAuth, async (req, res, next) => {
         next(err);
     }
 });
-//  GET/history            => 최근 검색어
-router.get("/history", loginAuth, async (req, res, next) => {
+//  GET/search/history            => 최근 검색어
+router.get("/search/history", loginAuth, async (req, res, next) => {
     const result = {
         data: null,
     };
@@ -82,6 +83,7 @@ router.get("/:uid", loginAuth, async (req, res, next) => {
     const { uid } = req.params;
     const userUid = req.session.idx;
     const result = {
+        images: null,
         data: null,
         isMine: false,
     };
@@ -102,6 +104,7 @@ router.get("/:uid", loginAuth, async (req, res, next) => {
         if (queryResult.rows[0].idx === userUid) {
             result.isMine = true;
         }
+        const imgOrder = queryResult.rows[0].image_order;
 
         next(result);
         result.data = queryResult.rows[0];
@@ -112,22 +115,43 @@ router.get("/:uid", loginAuth, async (req, res, next) => {
 });
 
 //  POST/               =>게시글 작성
-router.post("/", loginAuth, async (req, res, next) => {
+router.post("/", loginAuth, uploadImg, async (req, res, next) => {
     const idx = req.session.idx;
-    const { title, boardContents } = req.query;
+    const { title, boardContents } = req.body;
+    const images = req.files.images || [];
     const today = new Date();
     const result = {
         data: null,
     };
-
+    let boardCreate = false;
+    let boardUid;
     try {
+        await pgPool.query("BEGIN");
+        let imgOrder = "";
+        for (let num = 0; num < images.length; num++) {
+            imgOrder += num.toString();
+        }
+        console.log(imgOrder);
         queryCheck({ title, boardContents });
-        const sql = "INSERT INTO board( idx, title, contents, update_at , board_deleted) VALUES ($1 , $2 , $3, $4, false)";
-        await pgPool.query(sql, [idx, title, boardContents, today]);
+        const sql = `INSERT INTO board( idx, title, contents, update_at , board_deleted, image_order)
+                     VALUES ($1 , $2 , $3, $4, false, $5)
+                     RETURNING board_uid`;
 
+        const queryResult = await pgPool.query(sql, [idx, title, boardContents, today, imgOrder]);
+        boardUid = queryResult.rows[0].board_uid;
+        boardCreate = true;
+
+        let i = 0;
+        for (img of images) {
+            uploadToS3(boardUid, i, img);
+            i++;
+            2;
+        }
+        await pgPool.query("COMMIT");
         next(result);
         res.status(200).send();
     } catch (err) {
+        await pgPool.query("ROLLBACK");
         next(err);
     }
 });

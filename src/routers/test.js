@@ -1,6 +1,12 @@
 const router = require("express").Router();
 const getExpireTime = require("../modules/getExpireTime");
 const redisClient = require("../modules/redisClient");
+const awsConfig = require("../config/awsConfig");
+const multer = require("multer");
+
+const AWS = require("aws-sdk");
+// AWS.config.update()
+const s3 = new AWS.S3(awsConfig);
 
 router.get("/", async (req, res, next) => {
     // let today = new Date();
@@ -30,4 +36,30 @@ router.get("/idx", async (req, res, next) => {
     console.log(result.idx);
     res.status(200).send(result);
 });
-module.exports = router;
+const path = require("path");
+const storage = multer.memoryStorage();
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 5MB
+    },
+});
+
+// 여러 필드 처리를 위한 Multer 설정
+const boardUpload = upload.fields([
+    { name: "images", maxCount: 5 },
+    { name: "title", maxCount: 1 },
+    { name: "boardContents", maxCount: 1 },
+]);
+
+router.post("/upload", boardUpload, async (req, res, next) => {
+    const images = req.files.images || [];
+    const idx = 12;
+    console.log(images.length);
+    const error = new Error();
+    error.status = 400;
+
+    res.status(200).send();
+});
+
+https: module.exports = router;
