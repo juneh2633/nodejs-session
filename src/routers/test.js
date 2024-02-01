@@ -4,9 +4,11 @@ const redisClient = require("../modules/redisClient");
 const awsConfig = require("../config/awsConfig");
 const multer = require("multer");
 
-const AWS = require("aws-sdk");
+const { Upload } = require("@aws-sdk/lib-storage");
+const { S3 } = require("@aws-sdk/client-s3");
+
 // AWS.config.update()
-const s3 = new AWS.S3(awsConfig);
+const s3 = new S3(awsConfig);
 
 router.get("/", async (req, res, next) => {
     // let today = new Date();
@@ -78,7 +80,10 @@ router.post("/upload", boardUpload, async (req, res, next) => {
                 ACL: "public-read",
             };
 
-            await s3.upload(params).promise();
+            await new Upload({
+                client: s3,
+                params,
+            }).done();
             i++;
         }
     } catch (err) {
@@ -94,15 +99,8 @@ router.get("/a", uploadImg, async (req, res, next) => {
     res.status(200).send();
 });
 router.get("/asd", async (req, res, next) => {
-    let numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
-    let currentOrder = "0245";
-    for (let num of currentOrder) {
-        const index = numbers.indexOf(num);
-        if (index > -1) {
-            numbers.splice(index, 1);
-        }
-    }
-    console.log(numbers);
+    const s = "adsf";
+    console.log(s.slice(0, s.length - 1));
     res.status(200).send();
 });
 module.exports = router;

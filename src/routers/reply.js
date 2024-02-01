@@ -24,7 +24,7 @@ router.get("/", loginAuth, async (req, res, next) => {
     try {
         queryCheck({ boardIdx, page });
 
-        const sql = "SELECT * FROM reply WHERE deleted_at = NULL AND board_idx = $1 ORDER BY idx LIMIT $2 OFFSET $3";
+        const sql = "SELECT * FROM reply WHERE deleted_at IS NULL AND board_idx = $1 ORDER BY idx LIMIT $2 OFFSET $3";
         let queryResult = await pgPool.query(sql, [boardIdx, pageSizeOption, (parseInt(page) - 1) * pageSizeOption]);
         if (!queryResult || !queryResult.rows) {
             result.message = "no reply";
@@ -75,7 +75,7 @@ router.put("/:replyIdx", loginAuth, async (req, res, next) => {
     try {
         queryCheck({ replyIdx, replyContents });
 
-        const sql = "UPDATE reply SET contents = $1 WHERE idx = $2 AND account_idx = $3 AND deleted_at = NULL";
+        const sql = "UPDATE reply SET contents = $1 WHERE idx = $2 AND account_idx = $3 AND deleted_at IS NULL";
         const queryResult = await pgPool.query(sql, [replyContents, replyIdx, account.idx]);
         if (queryResult.rowCount === 0) {
             const error = new Error("update Fail");

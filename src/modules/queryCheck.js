@@ -17,7 +17,7 @@ const patternSelect = (str) => {
     if (str === "replyContents") {
         return /^.{1,500}$/;
     }
-    if (str === "page" || str === "uid" || str === "boardUid" || str === "replyUid") {
+    if (str === "page" || str === "idx" || str === "boardIdx" || str === "replyIdx") {
         return /^[0-9]{1,20}$/;
     }
     return /^[0]{9999999}$/;
@@ -30,17 +30,19 @@ module.exports = (query) => {
     error.status = 400;
     console.log(list);
     for (let idx = 0; idx < list.length; idx++) {
-        if (!list[idx][1] || list[idx][1] === undefined) {
-            error.message = `error occurs at ${list[idx][0]} , ${list[idx][0]} = [${list[idx][1]}]`;
+        const queryName = list[idx][0];
+        const queryString = list[idx][1];
+        if (!queryString || queryString === undefined) {
+            error.message = `error occurs at ${queryName} , ${queryName} = [${queryString}]`;
 
             throw error;
         }
-        if (!patternSelect(list[idx][0]).test(list[idx][1])) {
-            error.message = `regex fault at ${list[idx][0]}`;
+        if (!patternSelect(queryName).test(queryString)) {
+            error.message = `regex fault at ${queryName}`;
 
             throw error;
         } //pattern.test(id)
-        if (list[idx][0] === "passwordCheck" && list[idx - 1][1] !== list[idx][1]) {
+        if (queryName === "passwordCheck" && list[idx - 1][1] !== queryString) {
             error.message = "passwordCheck is not equal";
             throw error;
         }

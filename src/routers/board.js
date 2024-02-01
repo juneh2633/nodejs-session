@@ -26,7 +26,7 @@ router.get("/all", loginAuth, async (req, res, next) => {
         const sql = `SELECT board.*, account.id FROM board
                      JOIN account ON
                      board.account_idx = account.idx
-                     WHERE board.deleted_at = null
+                     WHERE board.deleted_at IS NULL
                      ORDER BY idx DESC
                      LIMIT $1 OFFSET $2;`;
         const queryResult = await pgPool.query(sql, [pageSizeOption, (parseInt(page) - 1) * pageSizeOption]);
@@ -49,7 +49,7 @@ router.get("/search", loginAuth, async (req, res, next) => {
         queryCheck({ title });
         const queryTitle = `%${title}%`;
 
-        const sql = "SELECT * FROM board WHERE title like $1 AND delete_at = false ORDER BY idx DESC";
+        const sql = "SELECT * FROM board WHERE title like $1 AND deleted_at IS NULL ORDER BY idx DESC";
         const queryResult = await pgPool.query(sql, [queryTitle]);
 
         next(result);
@@ -91,7 +91,7 @@ router.get("/:boardIdx", loginAuth, async (req, res, next) => {
     try {
         queryCheck({ boardIdx });
 
-        const sql = "SELECT * FROM board WHERE idx = $1 AND delete_at = null";
+        const sql = "SELECT * FROM board WHERE idx = $1 AND deleted_at IS NULL";
         const queryResult = await pgPool.query(sql, [boardIdx]);
 
         if (!queryResult || !queryResult.rows[0]) {
@@ -120,45 +120,54 @@ router.get("/:boardIdx", loginAuth, async (req, res, next) => {
 
 //  POST/               =>게시글 작성
 router.post("/", loginAuth, uploadImg, async (req, res, next) => {
-    const idx = req.session.idx;
-    const { title, boardContents } = req.body;
-    const images = req.files.images || [];
-    const today = new Date();
+    const account = req.session;
+    let { title, boardContents } = req.body;
+    const files = req.files;
     const result = {
         data: null,
     };
-    let boardCreate = false;
-    let boardboardIdx;
+    const client = await pgPool.connect();
     try {
-        await pgPool.query("BEGIN");
-        let imgOrder = "";
-        for (let num = 0; num < images.length; num++) {
-            imgOrder += num.toString();
+        await client.query("BEGIN");
+        queryCheck({ title });
+        if (files.length) {
+            files.forEach((file, index) => {
+                const regex = new RegExp(`!\\{${index}\\}`, "g"); // 이미지 위치에 !{0} !{1}
+                let tmp = boardContents;
+                boardContents = boardContents.replace(regex, file.location);
+                if (boardContents === tmp) {
+                    throw {
+                        message: "image regex fault",
+                        status: 400,
+                    };
+                }
+            });
         }
-
-        queryCheck({ title, boardContents });
-        const sql = `INSERT INTO board( idx, title, contents)
+        console.log("@#@#");
+        const sql = `INSERT INTO board( account_idx, title, contents)
                      VALUES ($1 , $2 , $3)
-                     RETURNING board_boardIdx`;
+                     RETURNING idx`;
 
-        const queryResult = await pgPool.query(sql, [idx, title, boardContents, today, imgOrder]);
-        boardboardIdx = queryResult.rows[0].board_boardIdx;
-        boardCreate = true;
+        const queryResult = await client.query(sql, [account.idx, title, boardContents]);
+        const boardIdx = queryResult.rows[0].idx;
 
-        let i = 0;
-        for (img of images) {
-            uploadToS3(boardboardIdx, i, img);
-            i++;
+        if (files.length) {
+            let imgSql = `INSERT INTO image (board_idx,  img_url) VALUES`;
+            files.forEach((file, index) => {
+                imgSql += ` (${boardIdx},  '${file.location}'),`;
+            });
+            imgSql = imgSql.slice(0, -1);
+            await client.query(imgSql);
         }
-
-        // 비동기 업로드 작업을 동시에 처리
-        await Promise.all(images.map((img, i) => uploadToS3(boardIdx, numbers[i], img)));
-        await pgPool.query("COMMIT");
+        await client.query("COMMIT");
         next(result);
         res.status(200).send();
     } catch (err) {
-        await pgPool.query("ROLLBACK");
+        console.log(err.stack);
+        await client.query("ROLLBACK");
         next(err);
+    } finally {
+        client.release();
     }
 });
 
@@ -202,7 +211,7 @@ router.post("/img/:boardIdx/add", loginAuth, uploadImg, async (req, res, next) =
     };
     try {
         //queryCheck({ inputIndex });
-        const sql = "SELECT * FROM board WHERE board_boardIdx = $1 AND idx = $2 AND delete_at = false";
+        const sql = "SELECT * FROM board WHERE board_boardIdx = $1 AND idx = $2 AND deleted_at IS NULL";
         const queryResult = await pgPool.query(sql, [boardIdx, idx]);
         const currentOrder = queryResult.rows[0].image_order;
 
@@ -261,7 +270,7 @@ router.post("/img/:boardIdx/delete", loginAuth, uploadImg, async (req, res, next
     };
     try {
         //queryCheck({ inputIndex });
-        const sql = "SELECT * FROM board WHERE board_boardIdx = $1 AND idx = $2 AND delete_at = false";
+        const sql = "SELECT * FROM board WHERE board_boardIdx = $1 AND idx = $2 AND deleted_at IS NULL";
         const queryResult = await pgPool.query(sql, [boardIdx, idx]);
         const currentOrder = queryResult.rows[0].image_order;
 
@@ -315,7 +324,7 @@ router.delete("/:boardIdx", loginAuth, async (req, res, next) => {
     try {
         queryCheck({ boardIdx });
 
-        const sql = "UPDATE board SET delete_at = $1 WHERE idx = $2 AND account_idx = $3";
+        const sql = "UPDATE board SET deleted_at = $1 WHERE idx = $2 AND account_idx = $3";
         const queryResult = await pgPool.query(sql, [today, boardIdx, account.idx]);
 
         if (queryResult.rowCount === 0) {

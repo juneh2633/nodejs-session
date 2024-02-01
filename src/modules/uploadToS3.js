@@ -1,6 +1,9 @@
 const awsConfig = require("../config/awsConfig");
-const AWS = require("aws-sdk");
-const s3 = new AWS.S3(awsConfig);
+
+const { Upload } = require("@aws-sdk/lib-storage");
+const { S3 } = require("@aws-sdk/client-s3");
+
+const s3 = new S3(awsConfig);
 const path = require("path");
 
 module.exports = async (boardUid, i, img) => {
@@ -25,7 +28,10 @@ module.exports = async (boardUid, i, img) => {
             ACL: "public-read",
         };
 
-        await s3.upload(params).promise();
+        await new Upload({
+            client: s3,
+            params,
+        }).done();
     } catch (err) {
         throw err;
     }

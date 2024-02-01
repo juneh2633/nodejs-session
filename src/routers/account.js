@@ -22,7 +22,7 @@ const recordDailyVisited = require("../modules/recordDailyVisited");
 
 //  POST/login           => 로그인
 router.post("/login", logoutAuth, async (req, res, next) => {
-    const { id, password } = req.query;
+    const { id, password } = req.body;
     const exception = {
         message: "id not Found",
         status: 401,
@@ -32,9 +32,12 @@ router.post("/login", logoutAuth, async (req, res, next) => {
     };
     try {
         queryCheck({ id, password });
-        const sql = "SELECT * FROM account WHERE id = $1  AND deleted_at = null";
+        //const sql = "SELECT * FROM account WHERE id = $1";
+        const sql = "SELECT * FROM account WHERE id = $1  AND deleted_at IS NULL";
         const queryResult = await pgPool.query(sql, [id]);
+        console.log(queryResult.rows[0].deleted_at);
         if (!queryResult.rows[0]) {
+            console.log("!!");
             throw exception;
         }
 
@@ -88,7 +91,7 @@ router.get("/find/id", logoutAuth, async (req, res, next) => {
     try {
         queryCheck({ name, phonenumber });
 
-        const sql = "SELECT id FROM account WHERE name = $1 AND phonenumber = $2 AND deleted_at = NULL";
+        const sql = "SELECT id FROM account WHERE name = $1 AND phonenumber = $2 AND deleted_at IS NULL";
         const queryResult = await pgPool.query(sql, [name, phonenumber]);
 
         if (!queryResult.rows) {
@@ -116,7 +119,7 @@ router.get("/find/password", logoutAuth, async (req, res, next) => {
     try {
         queryCheck({ id, name, phonenumber });
 
-        const sql = `SELECT password FROM account WHERE id = $1 AND name = $2 AND phonenumber = $3 AND deleted_at = NULL`;
+        const sql = `SELECT password FROM account WHERE id = $1 AND name = $2 AND phonenumber = $3 AND deleted_at IS NULL`;
         const queryResult = await pgPool.query(sql, [id, name, phonenumber]);
 
         if (!queryResult.rows) {
@@ -165,7 +168,7 @@ router.get("/", loginAuth, async (req, res, next) => {
 
 //  POST/               =>회원가입
 router.post("/", logoutAuth, async (req, res, next) => {
-    const { id, password, passwordCheck, name, phonenumber } = req.query;
+    const { id, password, passwordCheck, name, phonenumber } = req.body;
     const result = {
         data: null,
     };
@@ -184,7 +187,7 @@ router.post("/", logoutAuth, async (req, res, next) => {
             throw exception;
         }
 
-        const sql = "INSERT INTO account (id, name, password, phonenumber) VALUES ($1, $2, $3, $4)";
+        const sql = "INSERT INTO account (id, name, password, phonenumber, is_admin) VALUES ($1, $2, $3, $4, false)";
         await pgPool.query(sql, [id, name, pwHashed, phonenumber]);
 
         next(result);
