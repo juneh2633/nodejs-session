@@ -55,11 +55,54 @@ const boardUpload = upload.fields([
 router.post("/upload", boardUpload, async (req, res, next) => {
     const images = req.files.images || [];
     const idx = 12;
-    console.log(images.length);
+    const allowedExtensions = [".png", ".jpg", ".jpeg"];
     const error = new Error();
     error.status = 400;
+    try {
+        let i = 0;
+        for (img of images) {
+            const fileSize = img.size;
+            const maxSize = 10 * 1024 * 1024;
+            const extension = path.extname(img.originalname).toLowerCase();
+            if (fileSize > maxSize) {
+                throw (error.message = "file");
+            }
+            if (!allowedExtensions.includes(extension)) {
+                error.message = "extension error";
+                throw error;
+            }
+            const params = {
+                Bucket: "imagebucket2633",
+                Key: idx + "-" + i,
+                Body: img.buffer,
+                ACL: "public-read",
+            };
+
+            await s3.upload(params).promise();
+            i++;
+        }
+    } catch (err) {
+        console.log(err);
+    }
 
     res.status(200).send();
 });
-
-https: module.exports = router;
+const uploadImg = require("../middleware/uploadImg");
+router.get("/a", uploadImg, async (req, res, next) => {
+    const images = req.files.images || [];
+    console.log(images);
+    res.status(200).send();
+});
+router.get("/asd", async (req, res, next) => {
+    let numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    let currentOrder = "0245";
+    for (let num of currentOrder) {
+        const index = numbers.indexOf(num);
+        if (index > -1) {
+            numbers.splice(index, 1);
+        }
+    }
+    console.log(numbers);
+    res.status(200).send();
+});
+module.exports = router;

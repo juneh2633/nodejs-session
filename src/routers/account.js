@@ -32,7 +32,7 @@ router.post("/login", logoutAuth, async (req, res, next) => {
     };
     try {
         queryCheck({ id, password });
-        const sql = "SELECT * FROM account WHERE id = $1  AND account_deleted = false";
+        const sql = "SELECT * FROM account WHERE id = $1  AND deleted_at = null";
         const queryResult = await pgPool.query(sql, [id]);
         if (!queryResult.rows[0]) {
             throw exception;
@@ -62,7 +62,7 @@ router.get("/logout", loginAuth, async (req, res, next) => {
     const result = {
         data: null,
     };
-    const idx = req.session.idx;
+    const account = req.session;
     try {
         next(result);
         await redisClient.del(String(idx));
@@ -88,7 +88,7 @@ router.get("/find/id", logoutAuth, async (req, res, next) => {
     try {
         queryCheck({ name, phonenumber });
 
-        const sql = "SELECT id FROM account WHERE name = $1 AND phonenumber = $2 AND account_deleted = false";
+        const sql = "SELECT id FROM account WHERE name = $1 AND phonenumber = $2 AND deleted_at = NULL";
         const queryResult = await pgPool.query(sql, [name, phonenumber]);
 
         if (!queryResult.rows) {
@@ -116,7 +116,7 @@ router.get("/find/password", logoutAuth, async (req, res, next) => {
     try {
         queryCheck({ id, name, phonenumber });
 
-        const sql = `SELECT password FROM account WHERE id = $1 AND name = $2 AND phonenumber = $3 AND account_deleted = false`;
+        const sql = `SELECT password FROM account WHERE id = $1 AND name = $2 AND phonenumber = $3 AND deleted_at = NULL`;
         const queryResult = await pgPool.query(sql, [id, name, phonenumber]);
 
         if (!queryResult.rows) {
@@ -135,21 +135,20 @@ router.get("/find/password", logoutAuth, async (req, res, next) => {
 
 //  GET/                =>회원정보 열람
 router.get("/", loginAuth, async (req, res, next) => {
-    const idx = req.session.idx;
-    console.log(idx);
+    const account = req.session;
     const result = {
         data: null,
     };
-    const exception = {
-        message: "id not Found",
-        status: 401,
-    };
+
     try {
         const sql = "SELECT * FROM account WHERE idx = $1";
-        const queryResult = await pgPool.query(sql, [idx]);
+        const queryResult = await pgPool.query(sql, [account.idx]);
 
         if (!queryResult || !queryResult.rows) {
-            throw exception;
+            throw {
+                message: "id not Found",
+                status: 401,
+            };
         }
         next(result);
         result.data = {
@@ -185,7 +184,7 @@ router.post("/", logoutAuth, async (req, res, next) => {
             throw exception;
         }
 
-        const sql = "INSERT INTO account (id, name, password, phonenumber, account_deleted) VALUES ($1, $2, $3, $4, false)";
+        const sql = "INSERT INTO account (id, name, password, phonenumber) VALUES ($1, $2, $3, $4)";
         await pgPool.query(sql, [id, name, pwHashed, phonenumber]);
 
         next(result);
@@ -197,17 +196,15 @@ router.post("/", logoutAuth, async (req, res, next) => {
 
 //  PUT/                =>회원정보 수정
 router.put("/", loginAuth, async (req, res, next) => {
-    const idx = req.session.idx;
+    const account = req.session;
     const { password, passwordCheck, name, phonenumber } = req.query;
-    const result = {
-        data: null,
-    };
+
     try {
         queryCheck({ password, passwordCheck, name, phonenumber });
         const pwHashed = await pwHash(password);
         const sql = "UPDATE account SET password = $1, name = $2, phonenumber = $3 WHERE idx = $4 ";
-        await pgPool.query(sql, [pwHashed, name, phonenumber, idx]);
-        next(result);
+        await pgPool.query(sql, [pwHashed, name, phonenumber, account.idx]);
+        next({ data: null });
         res.status(200).send();
     } catch (err) {
         next(err);
@@ -216,13 +213,14 @@ router.put("/", loginAuth, async (req, res, next) => {
 
 //  DELETE/             =>회원탈퇴
 router.delete("/", loginAuth, async (req, res, next) => {
-    const idx = req.session.idx;
+    const account = req.session;
     const result = {
         data: null,
     };
+    const today = new Date();
     try {
-        const sql = "UPDATE account SET account_deleted = true WHERE idx = $1 ";
-        await pgPool.query(sql, [idx]);
+        const sql = "UPDATE account SET deleted_at = $1 WHERE idx = $2 ";
+        await pgPool.query(sql, [today, account.idx]);
 
         next(result);
         req.session.destroy();
