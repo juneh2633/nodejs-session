@@ -93,14 +93,41 @@ router.post("/upload", boardUpload, async (req, res, next) => {
     res.status(200).send();
 });
 const uploadImg = require("../middleware/uploadImg");
+
 router.get("/a", uploadImg, async (req, res, next) => {
     const images = req.files.images || [];
     console.log(images);
     res.status(200).send();
 });
 router.get("/asd", async (req, res, next) => {
-    const s = "adsf";
-    console.log(s.slice(0, s.length - 1));
+    // 원본 contents 문자열
+    const contents = "!{0}ㅁㄴㅇㄹㅁㄴㅇㄹ !{2} !{1} !{11}";
+
+    // 패턴과 일치하는 부분 및 일치하지 않는 부분을 분리하여 저장
+    let parts = [...contents.matchAll(/(!\{\d+\})|([^\s!]+|\s+)/g)].map((match) => ({
+        text: match[0],
+        type: match[1] ? "pattern" : "text",
+    }));
+
+    // 숫자만 추출하여 정렬된 새로운 인덱스 매핑 생성
+    let indexMap = parts.filter((part) => part.type === "pattern").map((part) => parseInt(part.text.match(/\d+/)[0], 10));
+    indexMap.sort((a, b) => a - b);
+
+    // 새로운 인덱스에 따라 pattern 부분 업데이트
+    let currentIndex = 0;
+    parts = parts.map((part) => {
+        if (part.type === "pattern") {
+            return { ...part, text: `!{${indexMap[currentIndex++]}}` };
+        }
+        return part;
+    });
+
+    // 새로운 contents 문자열 생성
+    const newContents = parts.map((part) => part.text).join("");
+
+    console.log(newContents);
+
     res.status(200).send();
 });
+
 module.exports = router;

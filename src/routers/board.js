@@ -92,26 +92,40 @@ router.get("/:boardIdx", loginAuth, async (req, res, next) => {
         queryCheck({ boardIdx });
 
         const sql = "SELECT * FROM board WHERE idx = $1 AND deleted_at IS NULL";
-        const queryResult = await pgPool.query(sql, [boardIdx]);
+        const board = await pgPool.query(sql, [boardIdx]);
 
-        if (!queryResult || !queryResult.rows[0]) {
+        if (!board || !board.rows[0]) {
             throw {
                 message: "board not Found",
                 status: 400,
             };
         }
 
-        if (queryResult.rows[0].idx === idx) {
+        if (board.rows[0].idx === account.idx) {
             result.isMine = true;
         }
-        const imgOrder = queryResult.rows[0].image_order;
-        const bucket = process.env.AWS_BUCKET;
-        const region = process.env.AWS_REGION;
-        for (char of imgOrder) {
-            result.images.push(`https://${bucket}.s3.${region}.amazonaws.com/${boardIdx}-${char}`);
-        }
+
         next(result);
-        result.data = queryResult.rows[0];
+        result.data = board.rows[0];
+        let currentContents = result.data.contents;
+
+        const imgSql = "SELECT * FROM image WHERE board_idx = $1 ORDER BY img_order ASC";
+        const imgUrl = await pgPool.query(imgSql, [boardIdx]);
+        if (imgUrl.rows[0]) {
+            imgUrl.rows.forEach((img, index) => {
+                const regex = new RegExp(`!\\{${index}\\}`, "g"); // 이미지 위치에 !{0} !{1}
+                let tmp = currentContents;
+                console.log(img.img_url);
+                currentContents = currentContents.replace(regex, `!{${img.img_url}}`);
+                if (currentContents === tmp) {
+                    throw {
+                        message: "image regex fault",
+                        status: 400,
+                    };
+                }
+            });
+        }
+        result.data.contents = currentContents;
         res.status(200).send(result);
     } catch (err) {
         next(err);
@@ -130,20 +144,7 @@ router.post("/", loginAuth, uploadImg, async (req, res, next) => {
     try {
         await client.query("BEGIN");
         queryCheck({ title });
-        if (files.length) {
-            files.forEach((file, index) => {
-                const regex = new RegExp(`!\\{${index}\\}`, "g"); // 이미지 위치에 !{0} !{1}
-                let tmp = boardContents;
-                boardContents = boardContents.replace(regex, file.location);
-                if (boardContents === tmp) {
-                    throw {
-                        message: "image regex fault",
-                        status: 400,
-                    };
-                }
-            });
-        }
-        console.log("@#@#");
+
         const sql = `INSERT INTO board( account_idx, title, contents)
                      VALUES ($1 , $2 , $3)
                      RETURNING idx`;
@@ -152,9 +153,9 @@ router.post("/", loginAuth, uploadImg, async (req, res, next) => {
         const boardIdx = queryResult.rows[0].idx;
 
         if (files.length) {
-            let imgSql = `INSERT INTO image (board_idx,  img_url) VALUES`;
+            let imgSql = `INSERT INTO image (board_idx, img_order, img_url) VALUES`;
             files.forEach((file, index) => {
-                imgSql += ` (${boardIdx},  '${file.location}'),`;
+                imgSql += ` (${boardIdx}, ${index},  '${file.location}'),`;
             });
             imgSql = imgSql.slice(0, -1);
             await client.query(imgSql);
@@ -166,36 +167,100 @@ router.post("/", loginAuth, uploadImg, async (req, res, next) => {
         console.log(err.stack);
         await client.query("ROLLBACK");
         next(err);
-    } finally {
-        client.release();
     }
 });
 
 //  PUT/:boardIdx            =>게시글 수정
-router.put("/:boardIdx", loginAuth, async (req, res, next) => {
+// 이미지 수정 예시
+// !{0}첫번째 이미지\n!{1} 두번째줄\n!{2}세번째 줄
+
+//    1. 이미지 순서 바꾸기
+// !{1}첫번째 이미지\n!{0}두번째줄\n!{2}세번째 줄
+
+//    2. 이미지 삭제
+// !{0}첫번째 이미지\n 두번째줄\n!{2}세번째 줄
+
+//    3. 이미지 추가
+// !{0}첫번째 이미지\n!{1} 두번째줄\n!{2}세번째 줄\n {3}
+
+//    복합
+//  !{1}첫번째 이미지\n!{0}두번째줄\n!{3}
+//  !{3}!{4}!{5}
+//  !{3}!{0}!{1}
+router.put("/:boardIdx", loginAuth, uploadImg, async (req, res, next) => {
     const { boardIdx } = req.params;
-    const { title, boardContents } = req.query;
+    let { title, boardContents } = req.body;
+    const files = req.files;
     const account = req.session;
     const result = {
         data: null,
     };
-
+    const client = await pgPool.connect();
     try {
-        queryCheck({ boardIdx, title, boardContents });
-        const sql = "UPDATE board SET title = $1, contents = $2 WHERE idx = $3 AND account_idx = $4";
-        const queryResult = await pgPool.query(sql, [title, boardContents, boardIdx, account.idx]);
+        queryCheck({ boardIdx, title });
+        await client.query("BEGIN");
 
-        if (queryResult.rowCount === 0) {
-            const error = new Error("update Fail");
-            error.status = 400;
-            throw error;
+        const currentImgSql = "SELECT * FROM image WHERE board_idx = $1 ORDER BY img_order ASC";
+        const currentImgQuery = await client.query(currentImgSql, [boardIdx]);
+        let currentImg = currentImgQuery.rows;
+        let newImgStartIndex = currentImg.length;
+
+        const currentBoardSql = "SELECT * FROM board WHERE idx = $1 AND deleted_at IS NULL";
+        const currentBoardQuery = await client.query(currentBoardSql, [boardIdx]);
+        let currentBoard = currentBoardQuery.rows[0];
+        if (!currentBoard) {
+            throw new Error();
         }
+        let currentImgArray = [];
+        let newNumber;
+        const pattern = /!\{(\d+)\}/g;
+        while ((newNumber = pattern.exec(currentBoard.contents)) !== null) {
+            currentImgArray.push(parseInt(newNumber[1], 10));
+        }
+
+        let newImgArray = [];
+        while ((newNumber = pattern.exec(boardContents)) !== null) {
+            currentImgArray.push(parseInt(newNumber[1], 10));
+        }
+        let index = 0;
+        boardContents = boardContents.replace(pattern, () => `!{${index++}}`);
+        const sql = "UPDATE board SET title = $1, contents = $2 WHERE idx = $3 AND account_idx = $4";
+        const board = await client.query(sql, [title, boardContents, boardIdx, account.idx]);
+        // [0 ,1 ,2]
+        // [1, 0 , 3]
+        let newImgUrlArray = [];
+        if (files.length) {
+            files.forEach((file, index) => {
+                newImgUrlArray.push(file.location);
+            });
+        }
+        const deleteImgSql = "DELETE FROM image WHERE board_idx = $1";
+        await client.query(deleteImgSql, [boardIdx]);
+
+        let imgSql = `INSERT INTO image (board_idx, img_order, img_url) VALUES`;
+        index = 0;
+        let newImgIndex = 0;
+        for (i of newImgArray) {
+            if (i >= newImgStartIndex) {
+                imgSql += ` (${boardIdx}, ${index},  '${newImgUrlArray[newImgIndex]}'),`;
+                newImgIndex++;
+            } else {
+                imgSql += ` (${boardIdx}, ${index},  '${currentImg[i].img_url}'),`;
+            }
+            index++;
+        }
+        await client.query(imgSql);
+
+        await client.query("COMMIT");
         next(result);
         res.status(200).send();
     } catch (err) {
+        await client.query("ROLLBACK");
         next(err);
     }
 });
+
+////////////////////////////////////////////////////////
 //             =>게시글 이미지 추가
 router.post("/img/:boardIdx/add", loginAuth, uploadImg, async (req, res, next) => {
     const { boardIdx } = req.params;
