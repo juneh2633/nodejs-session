@@ -212,6 +212,7 @@ router.put("/:boardIdx", loginAuth, uploadImg, async (req, res, next) => {
             throw new Error();
         }
         let currentImgArray = [];
+
         let newNumber;
         const pattern = /!\{(\d+)\}/g;
         while ((newNumber = pattern.exec(currentBoard.contents)) !== null) {
@@ -220,27 +221,32 @@ router.put("/:boardIdx", loginAuth, uploadImg, async (req, res, next) => {
 
         let newImgArray = [];
         while ((newNumber = pattern.exec(boardContents)) !== null) {
-            currentImgArray.push(parseInt(newNumber[1], 10));
+            newImgArray.push(parseInt(newNumber[1], 10));
         }
+        console.log("currentImgArray", currentImgArray);
+        console.log("newImgArray", newImgArray);
         let index = 0;
         boardContents = boardContents.replace(pattern, () => `!{${index++}}`);
         const sql = "UPDATE board SET title = $1, contents = $2 WHERE idx = $3 AND account_idx = $4";
         const board = await client.query(sql, [title, boardContents, boardIdx, account.idx]);
-        // [0 ,1 ,2]
-        // [1, 0 , 3]
+
         let newImgUrlArray = [];
         if (files.length) {
             files.forEach((file, index) => {
                 newImgUrlArray.push(file.location);
             });
         }
+        console.log(newImgUrlArray);
         const deleteImgSql = "DELETE FROM image WHERE board_idx = $1";
         await client.query(deleteImgSql, [boardIdx]);
 
         let imgSql = `INSERT INTO image (board_idx, img_order, img_url) VALUES`;
         index = 0;
         let newImgIndex = 0;
+        let imgChangeCheck = false;
         for (i of newImgArray) {
+            console.log("imgChange!");
+            imgChangeCheck = true;
             if (i >= newImgStartIndex) {
                 imgSql += ` (${boardIdx}, ${index},  '${newImgUrlArray[newImgIndex]}'),`;
                 newImgIndex++;
@@ -249,7 +255,11 @@ router.put("/:boardIdx", loginAuth, uploadImg, async (req, res, next) => {
             }
             index++;
         }
-        await client.query(imgSql);
+        if (imgChangeCheck) {
+            console.log("imgChange SQL!");
+            imgSql = imgSql.slice(0, -1);
+            await client.query(imgSql);
+        }
 
         await client.query("COMMIT");
         next(result);
