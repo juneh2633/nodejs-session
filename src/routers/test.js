@@ -103,7 +103,6 @@ router.get("/asd", async (req, res, next) => {
     // 원본 contents 문자열
     const contents = "!{0}ㅁㄴㅇㄹㅁㄴㅇㄹ !{2} !{1} !{11}";
 
-    // 패턴과 일치하는 부분 및 일치하지 않는 부분을 분리하여 저장
     let parts = [...contents.matchAll(/(!\{\d+\})|([^\s!]+|\s+)/g)].map((match) => ({
         text: match[0],
         type: match[1] ? "pattern" : "text",

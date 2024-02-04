@@ -8,6 +8,8 @@ const pwCompare = require("../modules/pwComapre");
 
 const redisClient = require("../modules/redisClient");
 const recordDailyVisited = require("../modules/recordDailyVisited");
+const { v4: uuidv4 } = require("uuid");
+
 /////////-----account---------///////////
 //  POST/login           => 로그인
 //  GET/logout          =>로그아웃
@@ -45,12 +47,16 @@ router.post("/login", logoutAuth, async (req, res, next) => {
         if (!match) {
             throw exception;
         }
-        const idx = queryResult.rows[0].idx;
-        req.session.idx = idx;
 
+        const idx = queryResult.rows[0].idx;
+        const uuid = uuidv4();
+        res.cookie("uuid", uuid, { httpOnly: true, secure: false });
         const adminPermission = queryResult.rows[0].is_admin ? "true" : "false";
+
+        await redisClient.set(uuid, idx);
+        await redisClient.set(String(idx), uuid);
         await redisClient.set(`admin${idx}`, adminPermission);
-        await redisClient.set(String(idx), req.session.id);
+
         recordDailyVisited(idx);
         next(result);
 
@@ -62,16 +68,14 @@ router.post("/login", logoutAuth, async (req, res, next) => {
 
 //  GET/logout          =>로그아웃
 router.get("/logout", loginAuth, async (req, res, next) => {
-    const result = {
-        data: null,
-    };
-    const account = req.session;
     try {
-        next(result);
-        await redisClient.del(String(idx));
-        await redisClient.del(`admin${idx}`);
-        req.session.destroy();
+        const userIdx = req.userIdx;
+        await redisClient.del();
+        await redisClient.del(String(userIdx));
+        await redisClient.del(`admin${userIdx}`);
 
+        res.clearCookie("uuid");
+        next({ data: null });
         res.status(200).send();
     } catch (err) {
         next(err);
@@ -84,18 +88,18 @@ router.get("/find/id", logoutAuth, async (req, res, next) => {
     const result = {
         data: null,
     };
-    const exception = {
-        message: "id not Found",
-        status: 401,
-    };
+
     try {
         queryCheck({ name, phonenumber });
 
         const sql = "SELECT id FROM account WHERE name = $1 AND phonenumber = $2 AND deleted_at IS NULL";
         const queryResult = await pgPool.query(sql, [name, phonenumber]);
 
-        if (!queryResult.rows) {
-            throw exception;
+        if (!queryResult.rows[0]) {
+            throw {
+                message: "id not Found",
+                status: 401,
+            };
         }
 
         result.data = queryResult.rows[0].id;
@@ -138,14 +142,14 @@ router.get("/find/password", logoutAuth, async (req, res, next) => {
 
 //  GET/                =>회원정보 열람
 router.get("/", loginAuth, async (req, res, next) => {
-    const account = req.session;
     const result = {
         data: null,
     };
 
     try {
+        const userIdx = req.userIdx;
         const sql = "SELECT * FROM account WHERE idx = $1";
-        const queryResult = await pgPool.query(sql, [account.idx]);
+        const queryResult = await pgPool.query(sql, [userIdx]);
 
         if (!queryResult || !queryResult.rows) {
             throw {
@@ -169,13 +173,7 @@ router.get("/", loginAuth, async (req, res, next) => {
 //  POST/               =>회원가입
 router.post("/", logoutAuth, async (req, res, next) => {
     const { id, password, passwordCheck, name, phonenumber } = req.body;
-    const result = {
-        data: null,
-    };
-    const exception = {
-        message: "id already exist",
-        status: 400,
-    };
+
     try {
         queryCheck({ id, password, passwordCheck, name, phonenumber });
         const pwHashed = await pwHash(password);
@@ -184,13 +182,16 @@ router.post("/", logoutAuth, async (req, res, next) => {
         const doubleCheckQueryResult = await pgPool.query(doubleCheckSql, [id]);
 
         if (doubleCheckQueryResult.rows[0]) {
-            throw exception;
+            throw {
+                message: "id already exist",
+                status: 400,
+            };
         }
 
         const sql = "INSERT INTO account (id, name, password, phonenumber, is_admin) VALUES ($1, $2, $3, $4, false)";
         await pgPool.query(sql, [id, name, pwHashed, phonenumber]);
 
-        next(result);
+        next({ data: null });
         res.status(200).send();
     } catch (err) {
         next(err);
@@ -199,14 +200,14 @@ router.post("/", logoutAuth, async (req, res, next) => {
 
 //  PUT/                =>회원정보 수정
 router.put("/", loginAuth, async (req, res, next) => {
-    const account = req.session;
     const { password, passwordCheck, name, phonenumber } = req.query;
 
     try {
+        const userIdx = req.userIdx;
         queryCheck({ password, passwordCheck, name, phonenumber });
         const pwHashed = await pwHash(password);
         const sql = "UPDATE account SET password = $1, name = $2, phonenumber = $3 WHERE idx = $4 ";
-        await pgPool.query(sql, [pwHashed, name, phonenumber, account.idx]);
+        await pgPool.query(sql, [pwHashed, name, phonenumber, userIdx]);
         next({ data: null });
         res.status(200).send();
     } catch (err) {
@@ -216,17 +217,17 @@ router.put("/", loginAuth, async (req, res, next) => {
 
 //  DELETE/             =>회원탈퇴
 router.delete("/", loginAuth, async (req, res, next) => {
-    const account = req.session;
-    const result = {
-        data: null,
-    };
     const today = new Date();
     try {
+        const userIdx = req.userIdx;
         const sql = "UPDATE account SET deleted_at = $1 WHERE idx = $2 ";
-        await pgPool.query(sql, [today, account.idx]);
+        await pgPool.query(sql, [today, userIdx]);
 
-        next(result);
-        req.session.destroy();
+        next({ data: null });
+        await redisClient.del();
+        await redisClient.del(String(userIdx));
+        await redisClient.del(`admin${userIdx}`);
+        res.clearCookie("uuid");
         res.status(200).send();
     } catch (err) {
         next(err);

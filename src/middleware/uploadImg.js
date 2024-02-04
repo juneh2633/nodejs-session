@@ -4,7 +4,6 @@ const upload = multer(multerConfig);
 const uploadArray = upload.array("images", 5);
 
 module.exports = (req, res, next) => {
-    console.log("AA");
     uploadArray(req, res, (err) => {
         if (err) {
             console.log("ERR", err);

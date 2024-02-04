@@ -5,7 +5,7 @@ const queryCheck = require("../modules/queryCheck");
 const redisClient = require("../modules/redisClient");
 const saveSearchHistory = require("../modules/saveSearchHistory");
 const uploadImg = require("../middleware/uploadImg");
-const uploadToS3 = require("../modules/uploadToS3");
+
 /////////-----board---------///////////
 //  GET/all?page        =>게시글 목록 가져오기(pagenation)
 //  GET/:boardIdx            =>게시글 가져오기
@@ -41,7 +41,7 @@ router.get("/all", loginAuth, async (req, res, next) => {
 //  GET/search            =>게시글 검색
 router.get("/search", loginAuth, async (req, res, next) => {
     const { title } = req.query;
-    const account = req.session;
+    const userIdx = req.userIdx;
     const result = {
         data: null,
     };
@@ -54,7 +54,7 @@ router.get("/search", loginAuth, async (req, res, next) => {
 
         next(result);
         result.data = queryResult.rows;
-        saveSearchHistory(account.idx, title);
+        saveSearchHistory(userIdx, title);
         res.status(200).send(result);
     } catch (err) {
         next(err);
@@ -65,8 +65,8 @@ router.get("/search/history", loginAuth, async (req, res, next) => {
     const result = {
         data: null,
     };
-    const account = req.session;
-    const key = `history${account.idx}`;
+    const userIdx = req.userIdx;
+    const key = `history${userIdx}`;
     try {
         const history = await redisClient.zRange(key, 0, 4, { withScores: true });
 
@@ -81,7 +81,7 @@ router.get("/search/history", loginAuth, async (req, res, next) => {
 //  GET/:boardIdx            =>게시글 가져오기
 router.get("/:boardIdx", loginAuth, async (req, res, next) => {
     const { boardIdx } = req.params;
-    const account = req.session;
+    const userIdx = req.userIdx;
     const result = {
         images: [],
         data: null,
@@ -101,7 +101,7 @@ router.get("/:boardIdx", loginAuth, async (req, res, next) => {
             };
         }
 
-        if (board.rows[0].idx === account.idx) {
+        if (board.rows[0].idx === userIdx) {
             result.isMine = true;
         }
 
@@ -134,7 +134,7 @@ router.get("/:boardIdx", loginAuth, async (req, res, next) => {
 
 //  POST/               =>게시글 작성
 router.post("/", loginAuth, uploadImg, async (req, res, next) => {
-    const account = req.session;
+    const userIdx = req.userIdx;
     let { title, boardContents } = req.body;
     const files = req.files;
     const result = {
@@ -149,7 +149,7 @@ router.post("/", loginAuth, uploadImg, async (req, res, next) => {
                      VALUES ($1 , $2 , $3)
                      RETURNING idx`;
 
-        const queryResult = await client.query(sql, [account.idx, title, boardContents]);
+        const queryResult = await client.query(sql, [userIdx, title, boardContents]);
         const boardIdx = queryResult.rows[0].idx;
 
         if (files.length) {
@@ -184,69 +184,84 @@ router.post("/", loginAuth, uploadImg, async (req, res, next) => {
 // !{0}첫번째 이미지\n!{1} 두번째줄\n!{2}세번째 줄\n {3}
 
 //    복합
+//  이미지 순서 변경
 //  !{1}첫번째 이미지\n!{0}두번째줄\n!{3}
+//  모든 이미지를 삭제하고 3개 추가
 //  !{3}!{4}!{5}
+//  두번째 이미지 삭제하고 맨 앞에 이미지 추가
 //  !{3}!{0}!{1}
 router.put("/:boardIdx", loginAuth, uploadImg, async (req, res, next) => {
     const { boardIdx } = req.params;
     let { title, boardContents } = req.body;
     const files = req.files;
-    const account = req.session;
+    const userIdx = req.userIdx;
     const result = {
         data: null,
     };
     const client = await pgPool.connect();
     try {
         queryCheck({ boardIdx, title });
+        //트랜잭션 시작
         await client.query("BEGIN");
 
+        //이미지 인덱스를 불러오기
         const currentImgSql = "SELECT * FROM image WHERE board_idx = $1 ORDER BY img_order ASC";
         const currentImgQuery = await client.query(currentImgSql, [boardIdx]);
         let currentImg = currentImgQuery.rows;
         let newImgStartIndex = currentImg.length;
 
+        //수정 전 글 불러오기
         const currentBoardSql = "SELECT * FROM board WHERE idx = $1 AND deleted_at IS NULL";
         const currentBoardQuery = await client.query(currentBoardSql, [boardIdx]);
         let currentBoard = currentBoardQuery.rows[0];
         if (!currentBoard) {
-            throw new Error();
+            const err = new Error("board not Found");
+            err.status = 401;
+            throw err;
         }
-        let currentImgArray = [];
 
+        // 원래 글의 이미지 인덱스 불러오기
+        let currentImgArray = [];
         let newNumber;
         const pattern = /!\{(\d+)\}/g;
         while ((newNumber = pattern.exec(currentBoard.contents)) !== null) {
             currentImgArray.push(parseInt(newNumber[1], 10));
         }
-
+        //새로운 글의 이미지 인덱스 순서 불러오기
         let newImgArray = [];
         while ((newNumber = pattern.exec(boardContents)) !== null) {
             newImgArray.push(parseInt(newNumber[1], 10));
         }
-        console.log("currentImgArray", currentImgArray);
-        console.log("newImgArray", newImgArray);
+
+        // 새로운글 인덱스 다시 0부터 n까지 차례대로 바꿔서 db에 저장
         let index = 0;
         boardContents = boardContents.replace(pattern, () => `!{${index++}}`);
         const sql = "UPDATE board SET title = $1, contents = $2 WHERE idx = $3 AND account_idx = $4";
-        const board = await client.query(sql, [title, boardContents, boardIdx, account.idx]);
+        const board = await client.query(sql, [title, boardContents, boardIdx, userIdx]);
 
+        //새로운 이미지의 url을 배열에 미리 저장하기
         let newImgUrlArray = [];
         if (files.length) {
             files.forEach((file, index) => {
                 newImgUrlArray.push(file.location);
             });
         }
-        console.log(newImgUrlArray);
+
+        //이미지를 db에 다시 넣기 위해 기존 테이블 삭제
         const deleteImgSql = "DELETE FROM image WHERE board_idx = $1";
         await client.query(deleteImgSql, [boardIdx]);
 
+        //이미지 목록 db에 다시 넣기
         let imgSql = `INSERT INTO image (board_idx, img_order, img_url) VALUES`;
         index = 0;
         let newImgIndex = 0;
+        //이미지변경없이 글만 바꾼다면 sql문 실행하지 않기
         let imgChangeCheck = false;
         for (i of newImgArray) {
-            console.log("imgChange!");
+            //한번이라도 이미지를 바꾼다면 true
             imgChangeCheck = true;
+
+            //새로운 이미지라면 newImgUrlArray에서 추출, 아니라면 currentImg에서 추출
             if (i >= newImgStartIndex) {
                 imgSql += ` (${boardIdx}, ${index},  '${newImgUrlArray[newImgIndex]}'),`;
                 newImgIndex++;
@@ -255,6 +270,7 @@ router.put("/:boardIdx", loginAuth, uploadImg, async (req, res, next) => {
             }
             index++;
         }
+
         if (imgChangeCheck) {
             console.log("imgChange SQL!");
             imgSql = imgSql.slice(0, -1);
@@ -265,133 +281,16 @@ router.put("/:boardIdx", loginAuth, uploadImg, async (req, res, next) => {
         next(result);
         res.status(200).send();
     } catch (err) {
+        //오류 발생시 롤백
         await client.query("ROLLBACK");
         next(err);
     }
 });
 
-////////////////////////////////////////////////////////
-//             =>게시글 이미지 추가
-router.post("/img/:boardIdx/add", loginAuth, uploadImg, async (req, res, next) => {
-    const { boardIdx } = req.params;
-    const { inputIndex } = req.body || [];
-    const images = req.files.images || [];
-    const idx = req.session.idx;
-    const result = {
-        data: null,
-    };
-    const exception = {
-        message: "",
-        status: 400,
-    };
-    try {
-        //queryCheck({ inputIndex });
-        const sql = "SELECT * FROM board WHERE board_boardIdx = $1 AND idx = $2 AND deleted_at IS NULL";
-        const queryResult = await pgPool.query(sql, [boardIdx, idx]);
-        const currentOrder = queryResult.rows[0].image_order;
-
-        let numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
-
-        for (let num of currentOrder) {
-            const index = numbers.indexOf(num);
-            if (index > -1) {
-                numbers.splice(index, 1);
-            }
-        }
-        if (images.length > numbers.length) {
-            exception.message = "over limits";
-            throw exception;
-        }
-        const intInputIndex = parseInt(inputIndex);
-        let orderString = numbers.join("");
-        orderString = orderString.slice(0, images.length);
-
-        if (intInputIndex > currentOrder.length) {
-            exception.message = "inputIndex index fault";
-            throw exception;
-        }
-
-        if (inputIndex) {
-            currentOrder = currentOrder.substring(0, intInputIndex) + orderString + currentOrder.substring(intInputIndex);
-        } else {
-            currentOrder += orderString;
-        }
-
-        let i = 0;
-        for (img of images) {
-            uploadToS3(boardIdx, numbers[i], img);
-            i++;
-        }
-        const updateSql = "UPDATE board SET image_order = $1 WHERE board_boardIdx = $2";
-        await pgPool.query(updateSql, [currentOrder, boardIdx]);
-        next(result);
-        res.status(200).send();
-    } catch (err) {
-        next(err);
-    }
-});
-//             =>게시글 이미지 삭제
-router.post("/img/:boardIdx/delete", loginAuth, uploadImg, async (req, res, next) => {
-    const { boardIdx } = req.params;
-    const { inputIndex } = req.body || [];
-    const images = req.files.images || [];
-    const idx = req.session.idx;
-    const result = {
-        data: null,
-    };
-    const exception = {
-        message: "",
-        status: 400,
-    };
-    try {
-        //queryCheck({ inputIndex });
-        const sql = "SELECT * FROM board WHERE board_boardIdx = $1 AND idx = $2 AND deleted_at IS NULL";
-        const queryResult = await pgPool.query(sql, [boardIdx, idx]);
-        const currentOrder = queryResult.rows[0].image_order;
-
-        let numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
-
-        for (let num of currentOrder) {
-            const index = numbers.indexOf(num);
-            if (index > -1) {
-                numbers.splice(index, 1);
-            }
-        }
-        if (images.length > numbers.length) {
-            exception.message = "over limits";
-            throw exception;
-        }
-        const intInputIndex = parseInt(inputIndex);
-        let orderString = numbers.join("");
-        orderString = orderString.slice(0, images.length);
-
-        if (intInputIndex > currentOrder.length) {
-            exception.message = "inputIndex index fault";
-            throw exception;
-        }
-
-        if (inputIndex) {
-            currentOrder = currentOrder.substring(0, intInputIndex) + orderString + currentOrder.substring(intInputIndex);
-        } else {
-            currentOrder += orderString;
-        }
-
-        let i = 0;
-        for (img of images) {
-            uploadToS3(boardIdx, numbers[i], img);
-            i++;
-        }
-
-        next(result);
-        res.status(200).send();
-    } catch (err) {
-        next(err);
-    }
-});
 //  DELETE/:boardIdx         =>게시글 삭제
 router.delete("/:boardIdx", loginAuth, async (req, res, next) => {
     const { boardIdx } = req.params;
-    const account = req.session;
+    const userIdx = req.userIdx;
     const today = new Date();
     const result = {
         data: null,
@@ -400,7 +299,7 @@ router.delete("/:boardIdx", loginAuth, async (req, res, next) => {
         queryCheck({ boardIdx });
 
         const sql = "UPDATE board SET deleted_at = $1 WHERE idx = $2 AND account_idx = $3";
-        const queryResult = await pgPool.query(sql, [today, boardIdx, account.idx]);
+        const queryResult = await pgPool.query(sql, [today, boardIdx, userIdx]);
 
         if (queryResult.rowCount === 0) {
             const error = new Error("delete Fail");

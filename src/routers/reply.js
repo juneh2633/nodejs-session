@@ -3,17 +3,17 @@ const pgPool = require("../modules/pgPool");
 const loginAuth = require("../middleware/loginAuth");
 const queryCheck = require("../modules/queryCheck");
 
-/////////-----reply---------///////////                     uid
-//  GET/:uid?page           =>댓글 가져오기(pagenation)      board_uid
-//  POST/:uid               =>댓글 작성                     board_uid
-//  PUT/:uid                =>댓글 수정                     reply_uid
-//  DELETE/:uid             =>댓글 삭제                     reply_uid
+/////////-----reply---------///////////                     idx
+//  GET/:idx?page           =>댓글 가져오기(pagenation)      board_idx
+//  POST/:idx               =>댓글 작성                     board_idx
+//  PUT/:idx                =>댓글 수정                     reply_idx
+//  DELETE/:idx             =>댓글 삭제                     reply_idx
 ////////////////////////////////////////////////////////////////
 
-// get/reply/:uid/?page 게시글의 댓글 목록 가져오기
+// get/reply/:idx/?page 게시글의 댓글 목록 가져오기
 router.get("/", loginAuth, async (req, res, next) => {
-    //board의 uid
-    const account = req.session;
+    //board의 idx
+    const userIdx = req.userIdx;
     const { boardIdx, page } = req.query;
     const pageSizeOption = 10;
 
@@ -30,7 +30,7 @@ router.get("/", loginAuth, async (req, res, next) => {
             result.message = "no reply";
         }
         queryResult.rows.forEach((elem) => {
-            if (elem.account_idx === account.idx) {
+            if (elem.account_idx === userIdx) {
                 elem.isMine = true;
             } else {
                 elem.isMine = false;
@@ -47,15 +47,15 @@ router.get("/", loginAuth, async (req, res, next) => {
 //  댓글 쓰기
 router.post("/", loginAuth, async (req, res, next) => {
     const { boardIdx, replyContents } = req.query;
-    const account = req.session;
+    const userIdx = req.userIdx;
     const result = {
         data: null,
     };
     const today = new Date();
     try {
-        queryCheck({ uid, replyContents });
+        queryCheck({ replyContents });
         const sql = "INSERT INTO reply ( account_idx, board_idx, contents) VALUES ($1, $2, $3)";
-        await pgPool.query(sql, [account.idx, boardIdx, replyContents]);
+        await pgPool.query(sql, [userIdx, boardIdx, replyContents]);
         next(result);
         res.status(200).send();
     } catch (err) {
@@ -67,7 +67,7 @@ router.post("/", loginAuth, async (req, res, next) => {
 router.put("/:replyIdx", loginAuth, async (req, res, next) => {
     const { replyIdx } = req.params;
     const { replyContents } = req.query;
-    const account = req.session;
+    const userIdx = req.userIdx;
     const result = {
         data: null,
     };
@@ -76,7 +76,7 @@ router.put("/:replyIdx", loginAuth, async (req, res, next) => {
         queryCheck({ replyIdx, replyContents });
 
         const sql = "UPDATE reply SET contents = $1 WHERE idx = $2 AND account_idx = $3 AND deleted_at IS NULL";
-        const queryResult = await pgPool.query(sql, [replyContents, replyIdx, account.idx]);
+        const queryResult = await pgPool.query(sql, [replyContents, replyIdx, userIdx]);
         if (queryResult.rowCount === 0) {
             const error = new Error("update Fail");
             error.status = 400;
@@ -92,7 +92,7 @@ router.put("/:replyIdx", loginAuth, async (req, res, next) => {
 //댓글 삭제
 router.delete("/:replyIdx", loginAuth, async (req, res, next) => {
     const { replyIdx } = req.params;
-    const account = req.session;
+    const userIdx = req.userIdx;
     const result = {
         data: null,
     };
@@ -102,7 +102,7 @@ router.delete("/:replyIdx", loginAuth, async (req, res, next) => {
 
         const sql = "UPDATE reply SET deleted_at = $1,  WHERE idx = $2 AND account_idx = $3";
 
-        const queryResult = await pgPool.query(sql, [today, replyIdx, account.idx]);
+        const queryResult = await pgPool.query(sql, [today, replyIdx, userIdx]);
 
         if (queryResult.rowCount === 0) {
             const error = new Error("delete Fail");
