@@ -59,7 +59,6 @@ app.use((err, req, res, next) => {
 app.listen(HTTP_PORT, () => {
     console.log(`${HTTP_PORT}번에서 HTTP 웹서버 실행`);
 });
-
 https.createServer(httpConfig, app).listen(HTTPS_PORT, () => {
     console.log(`${HTTPS_PORT}번에서 HTTPS 웹서버 실행`);
 });
